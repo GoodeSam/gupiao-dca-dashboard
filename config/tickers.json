@@ -31,6 +31,17 @@
     { "symbol": "BOX", "name": "BOX(b.watch)", "currency": "USD",
       "source": "mixin", "asset_id": "f5ef6b5d-cc5a-3d90-b2c0-a2fd386e7a3c" },
 
+    { "symbol": "9868.HK", "name": "小鹏汽车",   "currency": "HKD" },
+    { "symbol": "9901.HK", "name": "新东方",     "currency": "HKD" },
+    { "symbol": "HTHT",    "name": "华住集团",   "currency": "USD" },
+    { "symbol": "PDD",     "name": "拼多多",     "currency": "USD" },
+    { "symbol": "DIDIY",   "name": "滴滴(OTC)", "currency": "USD" },
+    { "symbol": "9618.HK", "name": "京东",       "currency": "HKD" },
+    { "symbol": "2618.HK", "name": "京东物流",   "currency": "HKD" },
+    { "symbol": "300750.SZ", "name": "宁德时代", "currency": "CNY" },
+    { "symbol": "000333.SZ", "name": "美的集团", "currency": "CNY" },
+    { "symbol": "002230.SZ", "name": "科大讯飞", "currency": "CNY" },
+
     { "symbol": "600519.SS", "name": "贵州茅台",   "currency": "CNY", "start": "2021-10-01" },
     { "symbol": "601816.SS", "name": "京沪高铁",   "currency": "CNY", "start": "2021-10-01" },
     { "symbol": "002594.SZ", "name": "比亚迪(A)", "currency": "CNY", "start": "2021-10-01" },
