@@ -81,7 +81,17 @@ def stock_payload(t: dict, r, monthly: float, start: date) -> dict:
             [b.trade_date.isoformat(), monthly * (i + 1)]
             for i, b in enumerate(r.buys)
         ],
+        # 每次买入后的累计份额:前端据此可对任意起投月做子区间重算
+        "shares_series": _cum_shares(r.buys),
     }
+
+
+def _cum_shares(buys) -> list[list]:
+    out, cum = [], 0.0
+    for b in buys:
+        cum += b.shares
+        out.append([b.trade_date.isoformat(), round(cum, 8)])
+    return out
 
 
 def atomic_write_json(path: Path, payload: dict) -> None:
