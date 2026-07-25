@@ -148,7 +148,9 @@ function jsXirr(flows) {
   const t0 = Date.parse(flows[0][0]);
   const yrs = f => (Date.parse(f[0]) - t0) / (365 * 864e5);
   const npv = r => flows.reduce((a, f) => a + f[1] / Math.pow(1 + r, yrs(f)), 0);
+  // 短区间高收益的年化可以远超 1000%,上界自适应扩张直到变号
   let lo = -0.9999, hi = 10;
+  while (npv(lo) * npv(hi) > 0 && hi < 1e9) hi *= 2;
   if (npv(lo) * npv(hi) > 0) return null;
   for (let i = 0; i < 200; i++) {
     const mid = (lo + hi) / 2;
@@ -157,10 +159,21 @@ function jsXirr(flows) {
   return (lo + hi) / 2;
 }
 
+// 每只标的的首/末买入月与子区间重算资格(series 与 shares_series 必须逐日对齐)
+const stockBySym = new Map();
+const firstBuyMonth = s => s.series.length ? monthOf(s.series[0][0]) : null;
+const lastBuyMonth = s => s.series.length ? monthOf(s.series[s.series.length - 1][0]) : null;
+function customOk(s) {
+  return Array.isArray(s.series) && Array.isArray(s.shares_series)
+    && s.series.length === s.shares_series.length && s.series.length > 0
+    && s.series.every((p, i) => s.shares_series[i][0] === p[0]
+         && Number.isFinite(s.shares_series[i][1]) && s.shares_series[i][1] > 0);
+}
+
 function effectiveStock(s) {
   const cs = customStart[s.symbol];
-  const firstMonth = s.series.length ? monthOf(s.series[0][0]) : null;
-  if (!cs || !firstMonth || cs <= firstMonth) return s;
+  const firstMonth = firstBuyMonth(s);
+  if (!cs || !firstMonth || cs <= firstMonth || !customOk(s)) return s;
 
   const monthly = meta.params.monthly_cny;
   const buys = s.series.map((p, i) => ({ d: p[0], v: p[1], cum: s.shares_series[i][1] }));
@@ -176,7 +189,7 @@ function effectiveStock(s) {
   const series = kept.map(b => [b.d, (b.cum - prevCum) * (b.v / b.cum)]);
   const flows = kept.map(b => [b.d, -monthly]);
   flows.push([s.as_of, value]);
-  return { ...s, start: cs + '-01', months: kept.length, invested,
+  return { ...s, months: kept.length, invested,
            value_cny: value, cum_return: value / invested - 1,
            xirr: jsXirr(flows), series,
            invested_series: kept.map((b, i) => [b.d, monthly * (i + 1)]) };
@@ -218,15 +231,14 @@ function renderTiles(stocks) {
 }
 
 function renderTable(stocks) {
-  const maxMonth = monthOf(meta.generated_at);
   document.querySelector('#tbl tbody').innerHTML = stocks.map(s => {
-    const base = baseStocks.find(b => b.symbol === s.symbol);
-    const firstMonth = base.series.length ? monthOf(base.series[0][0]) : null;
+    const base = stockBySym.get(s.symbol);
+    const firstMonth = firstBuyMonth(base);
     const val = customStart[s.symbol] ?? firstMonth ?? '';
-    const inp = firstMonth
+    const inp = (firstMonth && customOk(base))
       ? `<input type="month" class="start-inp${customStart[s.symbol] ? ' custom' : ''}"
            data-sym="${esc(s.symbol)}" value="${esc(val)}"
-           min="${esc(firstMonth)}" max="${esc(maxMonth)}">`
+           min="${esc(firstMonth)}" max="${esc(lastBuyMonth(base))}">`
       : '—';
     return `
     <tr><td>${esc(s.name)} ${esc(s.symbol)}</td><td>${esc(s.currency)}</td>
@@ -282,10 +294,15 @@ function buildChartModel(stocks) {
     return m;
   });
   const months = [...new Set(valueMaps.flatMap(m => Object.keys(m)))].sort();
-  const invSource = stocks.reduce((a, s) => s.months > a.months ? s : a, stocks[0]);
-  const invMap = Object.fromEntries(invSource.invested_series.map(p => [monthOf(p[0]), p[1]]));
-  let last = null;
-  const invested = months.map(k => (invMap[k] != null ? (last = invMap[k]) : last));
+  // 累计投入基线只在所有选中标的的投入日程完全一致时才有意义;
+  // 起投月各不相同时,一条共享基线会误导除一只以外的所有标的
+  const schedules = stocks.map(s => JSON.stringify(s.invested_series.map(p => monthOf(p[0]))));
+  let invested = null;
+  if (schedules.length > 0 && schedules.every(x => x === schedules[0])) {
+    const invMap = Object.fromEntries(stocks[0].invested_series.map(p => [monthOf(p[0]), p[1]]));
+    let last = null;
+    invested = months.map(k => (invMap[k] != null ? (last = invMap[k]) : last));
+  }
   return { months, values: valueMaps.map(m => months.map(k => m[k] ?? null)), invested };
 }
 
@@ -303,12 +320,12 @@ function drawChart(stocks) {
           borderWidth: 2, pointRadius: 0, pointHoverRadius: 5, pointHitRadius: 12,
           spanGaps: true, tension: 0.1,
         })),
-        {
+        ...(invested ? [{
           label: '累计投入', data: invested,
           borderColor: css('--baseline'), backgroundColor: css('--baseline'),
           borderWidth: 2, borderDash: [5, 4], pointRadius: 0, pointHoverRadius: 0,
           spanGaps: true,
-        },
+        }] : []),
       ],
     },
     options: {
@@ -332,12 +349,20 @@ function drawChart(stocks) {
   });
 }
 
-function renderAll() {
+function renderAll({ chart: withChart = true } = {}) {
   const v = viewStocks();
+  // 自定义起投后 series 变空的选中项要让出颜色槽,避免占位却不显示
+  const emptied = selection.filter(sym => {
+    const s = v.find(x => x.symbol === sym);
+    return !s || s.series.length === 0;
+  });
+  emptied.forEach(sym => { delete slotBySymbol[sym]; });
+  selection = selection.filter(sym => !emptied.includes(sym));
+
   renderTiles(v);
   renderTable(v);
   renderChips(v);
-  redrawChart(v);
+  if (withChart) redrawChart(v);
 }
 
 // ---------- 启动 ----------
@@ -348,6 +373,14 @@ async function main() {
   if (!Array.isArray(data.stocks) || !data.params) throw new Error('data.json 结构不符合预期');
   baseStocks = data.stocks;
   meta = data;
+  baseStocks.forEach(s => stockBySym.set(s.symbol, s));
+  // 子区间重算依赖 series/shares_series 逐日对齐;不满足的标的仍正常展示,
+  // 只是禁用起投月编辑(customOk 在渲染与重算两处同源把关)
+  const badCustom = baseStocks.filter(s => s.series.length > 0 && !customOk(s));
+  if (badCustom.length > 0) {
+    showError('以下标的的份额序列与市值序列不对齐,已禁用其起投月自定义:' +
+      badCustom.map(s => s.symbol).join('、'));
+  }
 
   if (baseStocks.length === 0) {
     document.getElementById('params').textContent = '没有配置任何标的';
@@ -371,7 +404,7 @@ async function main() {
 
   document.getElementById('sort').addEventListener('change', e => {
     sortMode = e.target.value;
-    renderAll();
+    renderAll({ chart: false });  // 排序不影响图表内容,不必重建
   });
   document.getElementById('chips').addEventListener('click', e => {
     const chip = e.target.closest('.chip');
@@ -381,8 +414,7 @@ async function main() {
     const inp = e.target.closest('.start-inp');
     if (!inp) return;
     const sym = inp.dataset.sym;
-    const base = baseStocks.find(b => b.symbol === sym);
-    const firstMonth = base.series.length ? monthOf(base.series[0][0]) : null;
+    const firstMonth = firstBuyMonth(stockBySym.get(sym));
     if (!inp.value || (firstMonth && inp.value <= firstMonth)) {
       delete customStart[sym];   // 早于或等于最早买入月 = 恢复全区间
     } else {

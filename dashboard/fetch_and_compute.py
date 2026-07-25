@@ -42,6 +42,16 @@ def validate_config(cfg: dict) -> float:
         raise ValueError(f"unsupported currencies {bad}; supported: {SUPPORTED_CURRENCIES}")
     for t in cfg["tickers"]:
         ticker_start(t, cfg)  # 起投日必须是合法 ISO 日期
+        source = t.get("source", "yfinance")
+        if source not in {"yfinance", "mixin"}:
+            raise ValueError(f"{t['symbol']}: unknown source {source!r}")
+        if source == "mixin":
+            # Mixin ticker 报价固定为 USD;配错币种会静默用错汇率
+            if not t.get("asset_id"):
+                raise ValueError(f"{t['symbol']}: mixin source requires asset_id")
+            if t["currency"] != "USD":
+                raise ValueError(f"{t['symbol']}: mixin source prices are USD, "
+                                 f"got currency {t['currency']!r}")
     return monthly
 
 
@@ -81,7 +91,8 @@ def stock_payload(t: dict, r, monthly: float, start: date) -> dict:
             [b.trade_date.isoformat(), monthly * (i + 1)]
             for i, b in enumerate(r.buys)
         ],
-        # 每次买入后的累计份额:前端据此可对任意起投月做子区间重算
+        # 每次买入后的累计份额:前端据此可对任意起投月做子区间重算。
+        # 不做舍入——它是前端金融重算的输入,精度必须与后端一致。
         "shares_series": _cum_shares(r.buys),
     }
 
@@ -90,8 +101,17 @@ def _cum_shares(buys) -> list[list]:
     out, cum = [], 0.0
     for b in buys:
         cum += b.shares
-        out.append([b.trade_date.isoformat(), round(cum, 8)])
+        out.append([b.trade_date.isoformat(), cum])
     return out
+
+
+def _check_aligned(symbol: str, payload: dict) -> None:
+    """三条序列按位对齐(长度与逐日日期)是前端子区间重算的前提。
+    用显式抛错而非 assert:python -O 下 assert 会被剥掉。"""
+    s, sh, inv = payload["series"], payload["shares_series"], payload["invested_series"]
+    if not (len(s) == len(sh) == len(inv)
+            and all(s[i][0] == sh[i][0] == inv[i][0] for i in range(len(s)))):
+        raise RuntimeError(f"{symbol}: series misaligned")
 
 
 def atomic_write_json(path: Path, payload: dict) -> None:
@@ -124,7 +144,12 @@ def main() -> None:
             else:
                 prices = daily_closes(t["symbol"], start.replace(day=1).isoformat(), today)
             r = run_dca(prices, monthly, start, today, fx=fx.get(t["currency"]))
-            stocks.append(stock_payload(t, r, monthly, start))
+            if not r.buys:
+                # 零投入没有"收益率"可言,当成功发布会显示误导性的 0%
+                raise RuntimeError(f"no eligible buys yet (start {start} too recent?)")
+            payload = stock_payload(t, r, monthly, start)
+            _check_aligned(t["symbol"], payload)
+            stocks.append(payload)
             print(f"{t['symbol']:>10}  months={len(r.buys)}  "
                   f"cum={fmt_pct(r.cum_return)}  xirr={fmt_pct(r.xirr)}")
         except Exception as e:  # 单标的失败不拖垮整体,记入 failed 供页面展示
