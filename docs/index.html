@@ -56,6 +56,13 @@
   td { text-align:right; padding:8px 12px; border-bottom:1px solid var(--grid); }
   tr:last-child td { border-bottom:none; }
   footer { color:var(--muted); font-size:12px; margin-top:18px; line-height:1.7; }
+  .chips { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:14px; }
+  .chip { font-size:12px; padding:4px 11px; border-radius:999px;
+          border:1px solid var(--grid); background:transparent; color:var(--ink-2);
+          cursor:pointer; display:inline-flex; align-items:center; gap:6px;
+          font-family:inherit; }
+  .chip:hover { border-color:var(--baseline); }
+  .chip.on { color:var(--ink); border-color:var(--baseline); font-weight:600; }
 </style>
 </head>
 <body>
@@ -69,7 +76,8 @@ USDCNY 汇率换算。数据仅供研究,非投资建议。</p>
 
 <div class="card">
   <h2>持仓市值走势(人民币)</h2>
-  <p class="caveat" id="chart-note" hidden>标的较多时,走势图仅显示当前市值最大的 5 只;全部标的见上方卡片与下方明细表。</p>
+  <p class="caveat" id="chart-note">点击标的名切换显示;颜色可辨识的上限是同时 5 条线,选第 6 只时会替换最早选中的。默认显示当前市值最大的 5 只。</p>
+  <div class="chips" id="chips"></div>
   <div class="chart-wrap"><canvas id="chart"></canvas></div>
 </div>
 
@@ -86,7 +94,6 @@ USDCNY 汇率换算。数据仅供研究,非投资建议。</p>
 
 <script>
 const COLOR_SLOTS = ['--s1','--s2','--s3','--s4','--s5'];
-const slotOf = i => `var(${COLOR_SLOTS[i % COLOR_SLOTS.length]})`;
 const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
 const esc = s => String(s).replace(/[&<>"']/g,
   c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -114,10 +121,10 @@ function renderHeader(data, stocks) {
 }
 
 function renderTiles(stocks) {
-  document.getElementById('tiles').innerHTML = stocks.map((s, i) => `
+  document.getElementById('tiles').innerHTML = stocks.map(s => `
     <div class="tile">
-      <div class="name"><span class="dot" style="background:${slotOf(i)}"></span>
-        ${esc(s.name)} <span style="color:var(--muted)">${esc(s.symbol)}</span></div>
+      <div class="name">${esc(s.name)}
+        <span style="color:var(--muted)">${esc(s.symbol)}</span></div>
       <div class="ret ${cls(s.cum_return)}">${pct(s.cum_return)}</div>
       <div class="meta">年化 ${pct(s.xirr)} · 市值 ${cny(s.value_cny)}</div>
     </div>`).join('');
@@ -132,12 +139,47 @@ function renderTable(stocks) {
     <td class="${cls(s.xirr)}">${pct(s.xirr)}</td><td>${esc(s.as_of ?? '—')}</td></tr>`).join('');
 }
 
-const CHART_MAX_SERIES = 5;  // 与调色板槽位数一致:超出会不可辨识
+const CHART_MAX_SERIES = COLOR_SLOTS.length;  // 超出调色板槽位数会不可辨识
 
-function chartSubset(stocks) {
-  if (stocks.length <= CHART_MAX_SERIES) return stocks;
-  document.getElementById('chart-note').hidden = false;
-  return [...stocks].sort((a, b) => b.value_cny - a.value_cny).slice(0, CHART_MAX_SERIES);
+// 走势图选择状态:selection 按选中顺序存 symbol,slotBySymbol 固定每只的颜色槽
+// (颜色跟随标的,选中期间不变——过滤变化不重排幸存者的颜色)
+let selection = [];
+const slotBySymbol = {};
+
+function freeSlot() {
+  const used = new Set(Object.values(slotBySymbol));
+  return COLOR_SLOTS.findIndex((_, i) => !used.has(i));
+}
+
+function toggleStock(sym, stocks) {
+  if (selection.includes(sym)) {
+    selection = selection.filter(s => s !== sym);
+    delete slotBySymbol[sym];
+  } else {
+    if (selection.length >= CHART_MAX_SERIES) {
+      delete slotBySymbol[selection.shift()];  // 替换最早选中的
+    }
+    slotBySymbol[sym] = freeSlot();
+    selection.push(sym);
+  }
+  renderChips(stocks);
+  redrawChart(stocks);
+}
+
+function renderChips(stocks) {
+  document.getElementById('chips').innerHTML = stocks.map(s => {
+    const on = selection.includes(s.symbol);
+    const dot = on ? `<span class="dot" style="background:var(${COLOR_SLOTS[slotBySymbol[s.symbol]]})"></span>` : '';
+    return `<button class="chip${on ? ' on' : ''}" data-sym="${esc(s.symbol)}">${dot}${esc(s.name)}</button>`;
+  }).join('');
+}
+
+function redrawChart(stocks) {
+  if (chart) { chart.destroy(); chart = null; }
+  const shown = selection
+    .map(sym => stocks.find(s => s.symbol === sym))
+    .filter(Boolean);
+  if (shown.length > 0) drawChart(shown);
 }
 
 function buildChartModel(stocks) {
@@ -164,8 +206,8 @@ function drawChart(stocks) {
       datasets: [
         ...stocks.map((s, i) => ({
           label: s.name, data: values[i],
-          borderColor: css(COLOR_SLOTS[i % COLOR_SLOTS.length]),
-          backgroundColor: css(COLOR_SLOTS[i % COLOR_SLOTS.length]),
+          borderColor: css(COLOR_SLOTS[slotBySymbol[s.symbol] ?? i % COLOR_SLOTS.length]),
+          backgroundColor: css(COLOR_SLOTS[slotBySymbol[s.symbol] ?? i % COLOR_SLOTS.length]),
           borderWidth: 2, pointRadius: 0, pointHoverRadius: 5, pointHitRadius: 12,
           spanGaps: true, tension: 0.1,
         })),
@@ -224,10 +266,18 @@ async function main() {
     showError('图表库(CDN)加载失败,已跳过走势图;下方数据表不受影响。');
     return;
   }
-  const shown = chartSubset(stocks);
-  drawChart(shown);
+  // 默认选中市值前 5;点击标签自由切换任意标的
+  [...stocks].sort((a, b) => b.value_cny - a.value_cny)
+    .slice(0, CHART_MAX_SERIES)
+    .forEach(s => { slotBySymbol[s.symbol] = freeSlot(); selection.push(s.symbol); });
+  renderChips(stocks);
+  redrawChart(stocks);
+  document.getElementById('chips').addEventListener('click', e => {
+    const chip = e.target.closest('.chip');
+    if (chip) toggleStock(chip.dataset.sym, stocks);
+  });
   matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
-    chart.destroy(); drawChart(shown);
+    redrawChart(stocks);
   });
 }
 
