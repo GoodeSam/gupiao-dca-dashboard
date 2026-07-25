@@ -1,0 +1,12 @@
+{
+  "comment": "在这里指定要跟踪的股票。currency 为 USD 时自动按 USDCNY 汇率换算;CNY 标的无需汇率。改完 push 后,GitHub Actions 会在下次运行时重算(或在 Actions 页手动触发 update-data)。",
+  "monthly_cny": 1000,
+  "start": "2021-01-01",
+  "tickers": [
+    { "symbol": "510300.SS", "name": "沪深300ETF", "currency": "CNY" },
+    { "symbol": "AAPL",      "name": "苹果",       "currency": "USD" },
+    { "symbol": "MSFT",      "name": "微软",       "currency": "USD" },
+    { "symbol": "NVDA",      "name": "英伟达",     "currency": "USD" },
+    { "symbol": "TSLA",      "name": "特斯拉",     "currency": "USD" }
+  ]
+}

@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>定投看板 · 每月1000元</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.9/dist/chart.umd.min.js"></script>
+<style>
+  :root {
+    color-scheme: light;
+    --page:#f9f9f7; --surface:#fcfcfb;
+    --ink:#0b0b0b; --ink-2:#52514e; --muted:#898781;
+    --grid:#e1e0d9; --baseline:#c3c2b7; --ring:rgba(11,11,11,.10);
+    --up:#006300; --down:#d03b3b;
+    --s1:#2a78d6; --s2:#eb6834; --s3:#1baf7a; --s4:#eda100; --s5:#e87ba4;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      color-scheme: dark;
+      --page:#0d0d0d; --surface:#1a1a19;
+      --ink:#ffffff; --ink-2:#c3c2b7; --muted:#898781;
+      --grid:#2c2c2a; --baseline:#383835; --ring:rgba(255,255,255,.10);
+      --up:#0ca30c; --down:#e66767;
+      --s1:#3987e5; --s2:#d95926; --s3:#199e70; --s4:#c98500; --s5:#d55181;
+    }
+  }
+  * { box-sizing:border-box; margin:0; }
+  body {
+    background:var(--page); color:var(--ink);
+    font-family:system-ui,-apple-system,"Segoe UI",sans-serif;
+    max-width:1060px; margin:0 auto; padding:28px 20px 48px;
+  }
+  h1 { font-size:22px; font-weight:650; }
+  .sub { color:var(--ink-2); font-size:13px; margin-top:6px; line-height:1.6; }
+  .caveat { color:var(--muted); font-size:12px; margin-top:4px; }
+  .tiles { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr));
+           gap:12px; margin:22px 0; }
+  .tile { background:var(--surface); border:1px solid var(--ring); border-radius:10px;
+          padding:14px 16px; }
+  .tile .name { font-size:13px; color:var(--ink-2); display:flex; align-items:center; gap:7px; }
+  .dot { width:9px; height:9px; border-radius:50%; flex:none; }
+  .tile .ret { font-size:26px; font-weight:650; margin-top:6px; }
+  .tile .meta { font-size:12px; color:var(--muted); margin-top:4px; }
+  .up { color:var(--up); } .down { color:var(--down); }
+  .card { background:var(--surface); border:1px solid var(--ring); border-radius:10px;
+          padding:18px; margin:14px 0; }
+  .card h2 { font-size:14px; font-weight:600; color:var(--ink-2); margin-bottom:12px; }
+  .chart-wrap { position:relative; height:390px; }
+  .tbl-wrap { overflow-x:auto; }
+  table { border-collapse:collapse; width:100%; font-size:13.5px;
+          font-variant-numeric:tabular-nums; white-space:nowrap; }
+  th { text-align:right; font-weight:600; color:var(--muted); font-size:12px;
+       padding:7px 12px; border-bottom:1px solid var(--grid); }
+  th:first-child, td:first-child { text-align:left; }
+  td { text-align:right; padding:8px 12px; border-bottom:1px solid var(--grid); }
+  tr:last-child td { border-bottom:none; }
+  footer { color:var(--muted); font-size:12px; margin-top:18px; line-height:1.7; }
+</style>
+</head>
+<body>
+<h1>定投看板</h1>
+<p class="sub" id="params">加载中…</p>
+<p class="caveat">口径:复权收盘价(价格总回报近似)、允许碎股、零费用;美元标的按当日
+USDCNY 汇率换算。数据仅供研究,非投资建议。</p>
+
+<div class="tiles" id="tiles"></div>
+
+<div class="card">
+  <h2>持仓市值走势(人民币)</h2>
+  <div class="chart-wrap"><canvas id="chart"></canvas></div>
+</div>
+
+<div class="card">
+  <h2>明细</h2>
+  <div class="tbl-wrap"><table id="tbl">
+    <thead><tr><th>标的</th><th>币种</th><th>定投月数</th><th>累计投入</th>
+    <th>当前市值</th><th>累计收益率</th><th>年化(XIRR)</th><th>数据截至</th></tr></thead>
+    <tbody></tbody>
+  </table></div>
+</div>
+
+<footer id="foot"></footer>
+
+<script>
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const cny = v => '¥' + Math.round(v).toLocaleString('zh-CN');
+const pct = v => (v >= 0 ? '+' : '') + (v * 100).toFixed(1) + '%';
+const cls = v => v >= 0 ? 'up' : 'down';
+let chart;
+
+async function main() {
+  const data = await (await fetch('data.json?t=' + Date.now())).json();
+  const stocks = data.stocks;
+
+  document.getElementById('params').textContent =
+    `每月首个交易日定投 ¥${data.params.monthly_cny},起点 ${data.params.start},` +
+    `共 ${Math.max(...stocks.map(s => s.months))} 期`;
+  document.getElementById('foot').textContent =
+    `数据生成于 ${data.generated_at.replace('T',' ').replace('+00:00',' UTC')};` +
+    `由 GitHub Actions 每月自动更新。标的清单见仓库 config/tickers.json。`;
+
+  const slots = ['--s1','--s2','--s3','--s4','--s5'];
+  document.getElementById('tiles').innerHTML = stocks.map((s, i) => `
+    <div class="tile">
+      <div class="name"><span class="dot" style="background:var(${slots[i % 5]})"></span>
+        ${s.name} <span style="color:var(--muted)">${s.symbol}</span></div>
+      <div class="ret ${cls(s.cum_return)}">${pct(s.cum_return)}</div>
+      <div class="meta">年化 ${pct(s.xirr)} · 市值 ${cny(s.value_cny)}</div>
+    </div>`).join('');
+
+  document.querySelector('#tbl tbody').innerHTML = stocks.map(s => `
+    <tr><td>${s.name} ${s.symbol}</td><td>${s.currency}</td><td>${s.months}</td>
+    <td>${cny(s.invested)}</td><td>${cny(s.value_cny)}</td>
+    <td class="${cls(s.cum_return)}">${pct(s.cum_return)}</td>
+    <td class="${cls(s.xirr)}">${pct(s.xirr)}</td><td>${s.as_of}</td></tr>`).join('');
+
+  drawChart(stocks);
+  matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+    chart.destroy(); drawChart(stocks);
+  });
+}
+
+function drawChart(stocks) {
+  const months = [...new Set(stocks.flatMap(s => s.series.map(p => p[0].slice(0, 7))))].sort();
+  const bySeries = s => {
+    const m = Object.fromEntries(s.series.map(p => [p[0].slice(0, 7), p[1]]));
+    return months.map(k => m[k] ?? null);
+  };
+  const invMax = stocks.reduce((a, s) => s.months > a.months ? s : a);
+  const invMap = Object.fromEntries(invMax.invested_series.map(p => [p[0].slice(0, 7), p[1]]));
+
+  const slots = ['--s1','--s2','--s3','--s4','--s5'];
+  chart = new Chart(document.getElementById('chart'), {
+    type: 'line',
+    data: {
+      labels: months,
+      datasets: [
+        ...stocks.map((s, i) => ({
+          label: s.name, data: bySeries(s),
+          borderColor: css(slots[i % 5]), backgroundColor: css(slots[i % 5]),
+          borderWidth: 2, pointRadius: 0, pointHoverRadius: 5, pointHitRadius: 12,
+          spanGaps: true, tension: 0.1,
+        })),
+        {
+          label: '累计投入', data: months.map(k => invMap[k] ?? null),
+          borderColor: css('--baseline'), backgroundColor: css('--baseline'),
+          borderWidth: 2, borderDash: [5, 4], pointRadius: 0, pointHoverRadius: 0,
+          spanGaps: true,
+        },
+      ],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false, animation: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { labels: { color: css('--ink-2'), usePointStyle: true,
+                            pointStyle: 'line', boxHeight: 2 } },
+        tooltip: {
+          callbacks: { label: c => ` ${c.dataset.label}: ${cny(c.parsed.y)}` },
+          itemSort: (a, b) => b.parsed.y - a.parsed.y,
+        },
+      },
+      scales: {
+        x: { ticks: { color: css('--muted'), maxTicksLimit: 12, maxRotation: 0 },
+             grid: { display: false }, border: { color: css('--baseline') } },
+        y: { ticks: { color: css('--muted'), callback: v => cny(v) },
+             grid: { color: css('--grid') }, border: { display: false } },
+      },
+    },
+  });
+}
+main();
+</script>
+</body>
+</html>
