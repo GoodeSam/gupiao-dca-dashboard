@@ -12,6 +12,12 @@ USDCNY 汇率换算。**仅供研究,非投资建议,结果不可当作实盘预
 
 编辑 `config/tickers.json` 后 push;或在 Actions 页手动触发 `update-data` 工作流立即重算。
 
+- `currency` 支持 `CNY` / `USD` / `HKD`(后两者按当日 USDCNY / HKDCNY 汇率折算);
+- 每只标的可用 `start` 覆盖全局起投日(如实际从 2021-10 开始定投);
+- 加密指数(如 BOX)用 `"source": "mixin"` + `asset_id`,历史价取自 Mixin 公开接口,
+  按"每月 1 号"定投,已取的历史点缓存在 `data/mixin_*.json` 并随仓库提交;
+- 标的多于 5 只时,走势图只画当前市值前 5(调色板只有 5 个可辨识槽位),全部数据在卡片和表格。
+
 ## 结构
 
 - `dashboard/dca_lite.py` — 核心计算(TDD,黄金用例见 `tests/`)

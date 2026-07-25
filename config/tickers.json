@@ -1,12 +1,39 @@
 {
-  "comment": "在这里指定要跟踪的股票。currency 为 USD 时自动按 USDCNY 汇率换算;CNY 标的无需汇率。改完 push 后,GitHub Actions 会在下次运行时重算(或在 Actions 页手动触发 update-data)。",
+  "comment": "在这里指定要跟踪的股票。currency 支持 CNY/USD/HKD(USD/HKD 自动按当日汇率折算人民币)。每只可用 start 覆盖全局起投日(如实际定投从 2021-10 开始)。改完 push 后 Actions 下次运行时重算,或在 Actions 页手动触发 update-data。",
   "monthly_cny": 1000,
   "start": "2021-01-01",
   "tickers": [
     { "symbol": "510300.SS", "name": "沪深300ETF", "currency": "CNY" },
-    { "symbol": "AAPL",      "name": "苹果",       "currency": "USD" },
-    { "symbol": "MSFT",      "name": "微软",       "currency": "USD" },
-    { "symbol": "NVDA",      "name": "英伟达",     "currency": "USD" },
-    { "symbol": "TSLA",      "name": "特斯拉",     "currency": "USD" }
+
+    { "symbol": "AAPL",  "name": "苹果",     "currency": "USD", "start": "2021-10-01" },
+    { "symbol": "MSFT",  "name": "微软",     "currency": "USD", "start": "2021-10-01" },
+    { "symbol": "TSLA",  "name": "特斯拉",   "currency": "USD", "start": "2021-10-01" },
+    { "symbol": "NVDA",  "name": "英伟达",   "currency": "USD" },
+    { "symbol": "GOOG",  "name": "谷歌",     "currency": "USD" },
+    { "symbol": "NFLX",  "name": "奈飞",     "currency": "USD", "start": "2021-10-01" },
+    { "symbol": "AMZN",  "name": "亚马逊",   "currency": "USD", "start": "2021-10-01" },
+    { "symbol": "META",  "name": "Meta",     "currency": "USD", "start": "2021-10-01" },
+    { "symbol": "KO",    "name": "可口可乐", "currency": "USD", "start": "2021-10-01" },
+    { "symbol": "MSTR",  "name": "微策略",   "currency": "USD" },
+    { "symbol": "TSM",   "name": "台积电",   "currency": "USD" },
+    { "symbol": "SPOT",  "name": "Spotify",  "currency": "USD" },
+
+    { "symbol": "9988.HK", "name": "阿里巴巴",         "currency": "HKD", "start": "2021-10-01" },
+    { "symbol": "0700.HK", "name": "腾讯",             "currency": "HKD", "start": "2021-10-01" },
+    { "symbol": "2015.HK", "name": "理想汽车",         "currency": "HKD", "start": "2021-10-01" },
+    { "symbol": "3690.HK", "name": "美团",             "currency": "HKD", "start": "2021-10-01" },
+    { "symbol": "6055.HK", "name": "中烟香港",         "currency": "HKD", "start": "2021-10-01" },
+    { "symbol": "1211.HK", "name": "比亚迪(港)",       "currency": "HKD", "start": "2021-10-01" },
+    { "symbol": "1810.HK", "name": "小米集团",         "currency": "HKD", "start": "2022-03-01" },
+    { "symbol": "3056.HK", "name": "Pando Innovation", "currency": "HKD", "start": "2022-12-01" },
+    { "symbol": "3112.HK", "name": "Pando BlockChain", "currency": "HKD", "start": "2022-12-01" },
+
+    { "symbol": "BOX", "name": "BOX(b.watch)", "currency": "USD",
+      "source": "mixin", "asset_id": "f5ef6b5d-cc5a-3d90-b2c0-a2fd386e7a3c" },
+
+    { "symbol": "600519.SS", "name": "贵州茅台",   "currency": "CNY", "start": "2021-10-01" },
+    { "symbol": "601816.SS", "name": "京沪高铁",   "currency": "CNY", "start": "2021-10-01" },
+    { "symbol": "002594.SZ", "name": "比亚迪(A)", "currency": "CNY", "start": "2021-10-01" },
+    { "symbol": "000538.SZ", "name": "云南白药",   "currency": "CNY", "start": "2021-10-01" }
   ]
 }

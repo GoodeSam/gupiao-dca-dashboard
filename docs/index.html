@@ -69,13 +69,14 @@ USDCNY 汇率换算。数据仅供研究,非投资建议。</p>
 
 <div class="card">
   <h2>持仓市值走势(人民币)</h2>
+  <p class="caveat" id="chart-note" hidden>标的较多时,走势图仅显示当前市值最大的 5 只;全部标的见上方卡片与下方明细表。</p>
   <div class="chart-wrap"><canvas id="chart"></canvas></div>
 </div>
 
 <div class="card">
   <h2>明细</h2>
   <div class="tbl-wrap"><table id="tbl">
-    <thead><tr><th>标的</th><th>币种</th><th>定投月数</th><th>累计投入</th>
+    <thead><tr><th>标的</th><th>币种</th><th>起投</th><th>定投月数</th><th>累计投入</th>
     <th>当前市值</th><th>累计收益率</th><th>年化(XIRR)</th><th>数据截至</th></tr></thead>
     <tbody></tbody>
   </table></div>
@@ -98,7 +99,7 @@ let chart;
 
 function showError(msg) {
   const el = document.getElementById('error');
-  el.textContent = msg;
+  el.textContent = el.hidden ? msg : el.textContent + ' ' + msg;
   el.hidden = false;
 }
 
@@ -125,9 +126,18 @@ function renderTiles(stocks) {
 function renderTable(stocks) {
   document.querySelector('#tbl tbody').innerHTML = stocks.map(s => `
     <tr><td>${esc(s.name)} ${esc(s.symbol)}</td><td>${esc(s.currency)}</td>
+    <td>${esc((s.start ?? '').slice(0, 7) || '—')}</td>
     <td>${s.months}</td><td>${cny(s.invested)}</td><td>${cny(s.value_cny)}</td>
     <td class="${cls(s.cum_return)}">${pct(s.cum_return)}</td>
     <td class="${cls(s.xirr)}">${pct(s.xirr)}</td><td>${esc(s.as_of ?? '—')}</td></tr>`).join('');
+}
+
+const CHART_MAX_SERIES = 5;  // 与调色板槽位数一致:超出会不可辨识
+
+function chartSubset(stocks) {
+  if (stocks.length <= CHART_MAX_SERIES) return stocks;
+  document.getElementById('chart-note').hidden = false;
+  return [...stocks].sort((a, b) => b.value_cny - a.value_cny).slice(0, CHART_MAX_SERIES);
 }
 
 function buildChartModel(stocks) {
@@ -205,13 +215,19 @@ async function main() {
   renderTiles(stocks);
   renderTable(stocks);
 
+  if (Array.isArray(data.failed) && data.failed.length > 0) {
+    showError('以下标的本次取数失败,未纳入统计:' +
+      data.failed.map(f => `${f.name} ${f.symbol}(${f.error})`).join(';'));
+  }
+
   if (typeof Chart === 'undefined') {
     showError('图表库(CDN)加载失败,已跳过走势图;下方数据表不受影响。');
     return;
   }
-  drawChart(stocks);
+  const shown = chartSubset(stocks);
+  drawChart(shown);
   matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
-    chart.destroy(); drawChart(stocks);
+    chart.destroy(); drawChart(shown);
   });
 }
 
