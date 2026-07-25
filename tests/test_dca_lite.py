@@ -25,6 +25,44 @@ def test_first_trading_day_per_month():
     assert got == [date(2021, 1, 4), date(2021, 2, 1), date(2021, 3, 2)]
 
 
+def test_mid_month_start_skips_that_month():
+    """起点晚于当月首个交易日 → 跳过该月,而不是顺延到月中某日买入。"""
+    got = first_trading_days(TRADING_DATES, date(2021, 1, 5), date(2021, 3, 31))
+    assert got == [date(2021, 2, 1), date(2021, 3, 2)]
+
+
+def test_empty_fx_mapping_raises():
+    """空汇率字典必须报错,不得静默按 1:1 计价。"""
+    prices = {date(2021, 1, 4): 100.0}
+    with pytest.raises(KeyError):
+        run_dca(prices, monthly_cny=1000.0,
+                start=date(2021, 1, 1), end=date(2021, 1, 31), fx={})
+
+
+def test_invalid_monthly_raises():
+    prices = {date(2021, 1, 4): 10.0}
+    for bad in (0.0, -100.0, float("nan"), float("inf")):
+        with pytest.raises(ValueError):
+            run_dca(prices, monthly_cny=bad,
+                    start=date(2021, 1, 1), end=date(2021, 1, 31))
+
+
+def test_invalid_price_raises():
+    prices = {date(2021, 1, 4): 0.0}
+    with pytest.raises(ValueError):
+        run_dca(prices, monthly_cny=1000.0,
+                start=date(2021, 1, 1), end=date(2021, 1, 31))
+
+
+def test_xirr_none_when_single_date():
+    """唯一买入日即估值日 → 现金流同日抵消,XIRR 无定义,应为 None。"""
+    prices = {date(2021, 1, 4): 10.0}
+    r = run_dca(prices, monthly_cny=1000.0,
+                start=date(2021, 1, 1), end=date(2021, 1, 31))
+    assert r.value_cny == pytest.approx(1000.0)
+    assert r.xirr is None
+
+
 def test_month_without_data_is_skipped():
     dates = [date(2021, 1, 4), date(2021, 3, 2)]  # 2 月停牌/未上市
     got = first_trading_days(dates, date(2021, 1, 1), date(2021, 3, 31))
